@@ -40,6 +40,12 @@ type ExportArtifact = {
   sizeBytes: number;
 } | null;
 
+const PROMPT_IDEAS = [
+  "Make a Bender ice cube tray STL.",
+  "Create a low-profile soap dish that fits the P1S.",
+  "Turn this imported STL into a magnet-ready key tray.",
+];
+
 function getDefaultBridgeUrl() {
   if (typeof window === "undefined") {
     return process.env.NEXT_PUBLIC_PRINTSTUDIO_BRIDGE_URL ?? "";
@@ -122,28 +128,6 @@ function isValidUrl(value: string) {
   }
 }
 
-function numberInput(
-  label: string,
-  value: number,
-  onChange: (value: number) => void,
-  step = 1,
-) {
-  return (
-    <label className="block">
-      <span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-        {label}
-      </span>
-      <input
-        type="number"
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-      />
-    </label>
-  );
-}
-
 export function PrintStudioApp() {
   const [project, setProject] = useState<StudioProject>(() => createStarterProject());
   const [activity, setActivity] = useState<ActivityEntry[]>([
@@ -164,6 +148,8 @@ export function PrintStudioApp() {
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>("tray-shell");
   const [viewerMode, setViewerMode] = useState<"final" | "assembly">("final");
   const [connectPanelOpen, setConnectPanelOpen] = useState(false);
+  const [liveTab, setLiveTab] = useState<"toolCalls" | "activity" | "verification">("toolCalls");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [exportArtifact, setExportArtifact] = useState<ExportArtifact>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -190,7 +176,6 @@ export function PrintStudioApp() {
   }, []);
 
   const printAnalysis = useMemo(() => estimateProjectAnalysis(project), [project]);
-  const selectedShape = project.shapes.find((shape) => shape.id === selectedShapeId) ?? null;
   const bridgeUrlValid = bridgeUrl ? isValidUrl(bridgeUrl) : true;
   const connectInstructions = useMemo(
     () =>
@@ -657,35 +642,6 @@ export function PrintStudioApp() {
     logActivity("tool", "Primitive added", buildShapeSummary(nextShape), "success");
   }, [applyProject, logActivity]);
 
-  const updateSelectedShape = useCallback((patch: Partial<ShapeDefinition>) => {
-    if (!selectedShapeId) {
-      return;
-    }
-
-    setProject((current) => {
-      const shapes = current.shapes.map((shape) =>
-        shape.id === selectedShapeId
-          ? {
-              ...shape,
-              ...patch,
-              params: {
-                ...shape.params,
-                ...patch.params,
-              },
-            }
-          : shape,
-      );
-      const nextProject = {
-        ...current,
-        shapes,
-        selectedShapeId,
-      };
-      projectRef.current = nextProject;
-      return nextProject;
-    });
-    setSelectedShapeId(selectedShapeId);
-  }, [selectedShapeId]);
-
   const importStl = useCallback(async (file: File) => {
     const loader = new STLLoader();
     const buffer = await file.arrayBuffer();
@@ -720,391 +676,337 @@ export function PrintStudioApp() {
     <main className="grain min-h-screen px-3 py-3 text-slate-900 md:px-4">
       <div
         ref={workspaceRef}
-        className={`mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-[1720px] grid-cols-1 gap-3 rounded-[24px] border border-white/70 p-3 shadow-[0_20px_60px_rgba(15,23,42,0.10)] lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_280px] ${agentConnected ? "agent-glow" : ""}`}
+        className={`mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-[1700px] grid-cols-1 gap-3 rounded-[24px] border border-white/70 p-3 shadow-[0_20px_60px_rgba(15,23,42,0.10)] lg:grid-cols-[280px_minmax(0,1fr)] ${agentConnected ? "agent-glow" : ""}`}
         style={{ backgroundImage: "var(--hero)" }}
       >
-        <section className="panel panel-strong rounded-[20px] p-4 lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-slate-500">
-                PrintStudio
-              </p>
-              <h1 className="mt-2 text-[30px] font-semibold leading-none text-slate-900">
-                Agent STL workspace
-              </h1>
-            </div>
-            <div className="rounded-full border border-slate-200 bg-white/70 px-2.5 py-1 font-mono text-[10px] text-slate-600">
-              {sessionId}
-            </div>
-          </div>
-
-          <p className="mt-3 text-xs leading-5 text-slate-700">
-            Model in-browser, connect an agent over websocket, verify with screenshots,
-            then export for the Bambu Lab P1S.
-          </p>
-
-          <div
-            className={`mt-4 rounded-[18px] border px-3 py-3 ${agentConnected ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-white/70"}`}
-          >
-            <div className="flex items-center justify-between gap-3">
+        <aside className="panel panel-strong rounded-[20px] p-4 lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto">
+          <div className="rounded-[18px] border border-slate-200 bg-white/90 p-3">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                  Agent State
+                <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-slate-500">
+                  PrintStudio
                 </p>
-                <p className="mt-1 text-base font-semibold text-slate-900">{agentName}</p>
-              </div>
-              <span
-                className={`rounded-full px-2.5 py-1 font-mono text-[10px] ${agentConnected ? "bg-emerald-600 text-white" : "bg-slate-900 text-white"}`}
-              >
-                {agentConnected ? "Connected" : "Waiting"}
-              </span>
-            </div>
-            <p className="mt-2 text-xs leading-5 text-slate-600">
-              {agentConnected
-                ? "The workspace is now emitting live tool activity and screenshots for the connected agent."
-                : "Click connect, paste the instructions into your agent, and start issuing modeling tool calls."}
-            </p>
-          </div>
-
-          <label className="mt-4 block">
-            <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-              Bridge URL
-            </span>
-            <input
-              value={bridgeUrl}
-              onChange={(event) => setBridgeUrl(event.target.value)}
-              className="w-full rounded-[16px] border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none ring-0"
-              placeholder="ws://localhost:8787"
-            />
-          </label>
-
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => void copyInstructions()}
-              className="rounded-[16px] bg-slate-950 px-3 py-2.5 text-xs font-medium text-white transition hover:bg-slate-800"
-            >
-              Connect Agent
-            </button>
-            <button
-              type="button"
-              onClick={createNewBlankProject}
-              className="rounded-[16px] border border-slate-300 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 transition hover:bg-slate-50"
-            >
-              New Blank Project
-            </button>
-          </div>
-
-          {connectPanelOpen ? (
-            <div className="mt-3 rounded-[18px] border border-slate-200 bg-white/90 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                  Agent Instructions
+                <h1 className="mt-1 text-[24px] font-semibold leading-none text-slate-900">
+                  Connect, prompt, watch
+                </h1>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  The viewer is the main event. This rail only handles connection and core session actions.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setConnectPanelOpen(false)}
-                  className="text-[11px] font-medium text-slate-500"
-                >
-                  Close
-                </button>
               </div>
-              <p className="mt-2 text-xs leading-5 text-slate-600">
-                These were copied to your clipboard when possible. If not, copy them from here.
-              </p>
-              <textarea
-                readOnly
-                value={connectInstructions}
-                className="mt-3 min-h-44 w-full rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-3 font-mono text-[11px] leading-5 text-slate-700 outline-none"
-              />
+              <div className="rounded-full border border-slate-200 bg-white/70 px-2.5 py-1 font-mono text-[10px] text-slate-600">
+                {sessionId}
+              </div>
             </div>
-          ) : null}
 
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={resetToTray}
-              className="rounded-[16px] border border-slate-300 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 transition hover:bg-slate-50"
-            >
-              Load Tray Preset
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                void executeTool({
-                  callId: nanoid(8),
-                  tool: "prepare_for_bambu_p1s",
-                })
-              }
-              className="rounded-[16px] border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-xs font-medium text-emerald-900"
-            >
-              Prepare For P1S
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleQuickExport()}
-              className="rounded-[16px] border border-sky-300 bg-sky-50 px-3 py-2.5 text-xs font-medium text-sky-900"
-            >
-              Export STL
-            </button>
-          </div>
-
-          <label className="mt-4 block">
-            <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-              Project Brief
-            </span>
-            <textarea
-              value={project.brief}
-              onChange={(event) =>
-                applyProject({
-                  ...project,
-                  brief: event.target.value,
-                })
-              }
-              className="min-h-20 w-full rounded-[16px] border border-slate-200 bg-white px-3 py-2.5 text-xs leading-5 outline-none"
-            />
-          </label>
-
-          <div className="mt-4">
-            <div className="flex items-center justify-between">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                Quick Shapes
-              </p>
-              <p className="text-[11px] text-slate-500">{project.shapes.length} shapes</p>
-            </div>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {(["box", "roundedBox", "cylinder", "sphere", "text"] as const).map((primitive) => (
-                <button
-                  key={primitive}
-                  type="button"
-                  onClick={() => addPrimitive(primitive)}
-                  className="rounded-[14px] border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium capitalize text-slate-900 transition hover:border-slate-300 hover:bg-slate-50"
+            <div className="mt-3 grid gap-2">
+              {[
+                {
+                  step: "1",
+                  title: "Connect agent",
+                  detail: "Copy the session instructions into Claude Code or another agent.",
+                  active: connectPanelOpen || agentConnected,
+                },
+                {
+                  step: "2",
+                  title: "Prompt it",
+                  detail: "Ask for a tray, organizer, remix, or import-based edit.",
+                  active: agentConnected,
+                },
+                {
+                  step: "3",
+                  title: "Watch live",
+                  detail: "Follow tool calls, screenshots, and STL export below the viewer.",
+                  active: toolCalls.length > 0 || screenshots.length > 0,
+                },
+              ].map((item) => (
+                <div
+                  key={item.step}
+                  className={`rounded-[14px] border px-3 py-2.5 ${
+                    item.active ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50"
+                  }`}
                 >
-                  Add {primitive}
-                </button>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`flex size-6 items-center justify-center rounded-full font-mono text-[10px] ${
+                        item.active ? "bg-emerald-600 text-white" : "bg-slate-900 text-white"
+                      }`}
+                    >
+                      {item.step}
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                      <p className="text-[11px] leading-5 text-slate-600">{item.detail}</p>
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
 
-          <div className="mt-4">
-            <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-              Import STL
+          <div className="mt-4 rounded-[18px] border border-slate-200 bg-white/90 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                  Session
+                </p>
+                <p className="mt-1 text-base font-semibold text-slate-900">{agentConnected ? agentName : "Waiting for agent"}</p>
+              </div>
+              <span
+                className={`rounded-full px-2.5 py-1 font-mono text-[10px] ${
+                  agentConnected ? "bg-emerald-600 text-white" : "bg-slate-900 text-white"
+                }`}
+              >
+                {displayedBridgeState}
+              </span>
+            </div>
+
+            <label className="mt-3 block">
+              <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                Bridge URL
+              </span>
+              <input
+                value={bridgeUrl}
+                onChange={(event) => setBridgeUrl(event.target.value)}
+                className="w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs outline-none"
+                placeholder="ws://localhost:8787"
+              />
             </label>
-            <input
-              type="file"
-              accept=".stl"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  void importStl(file);
-                }
-              }}
-              className="w-full rounded-[16px] border border-slate-200 bg-white px-3 py-2.5 text-xs"
-            />
-            {project.importedModel ? (
-              <div className="mt-2 rounded-[16px] border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
-                {project.importedModel.name} ·{" "}
-                {project.importedModel.triangleCount.toLocaleString()} triangles
+
+            <div className="mt-3 grid gap-2">
+              <button
+                type="button"
+                onClick={() => void copyInstructions()}
+                className="rounded-[14px] bg-slate-950 px-3 py-2.5 text-xs font-medium text-white transition hover:bg-slate-800"
+              >
+                Connect To Claude Code / Agent
+              </button>
+              <button
+                type="button"
+                onClick={() => setConnectPanelOpen((current) => !current)}
+                className="rounded-[14px] border border-slate-300 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 transition hover:bg-slate-50"
+              >
+                {connectPanelOpen ? "Hide Instructions" : "Show Instructions"}
+              </button>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {PROMPT_IDEAS.map((idea) => (
+                <span
+                  key={idea}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-600"
+                >
+                  {idea}
+                </span>
+              ))}
+            </div>
+
+            {connectPanelOpen ? (
+              <div className="mt-3 rounded-[14px] border border-slate-200 bg-slate-50 p-2.5">
+                <p className="text-xs leading-5 text-slate-600">
+                  Copy this block into Claude Code or another agent client.
+                </p>
+                <textarea
+                  readOnly
+                  value={connectInstructions}
+                  className="mt-2 min-h-44 w-full rounded-[12px] border border-slate-200 bg-white px-3 py-3 font-mono text-[11px] leading-5 text-slate-700 outline-none"
+                />
               </div>
             ) : null}
           </div>
 
-          {selectedShape ? (
-            <div className="mt-4 rounded-[18px] border border-slate-200 bg-white p-3">
-              <div className="flex items-center justify-between">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                  Selected Shape
+          <div className="mt-4 rounded-[18px] border border-slate-200 bg-white/90 p-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+              Session Actions
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={createNewBlankProject}
+                className="rounded-[14px] border border-slate-300 bg-white px-3 py-2.5 text-xs font-medium text-slate-900"
+              >
+                New Blank
+              </button>
+              <button
+                type="button"
+                onClick={resetToTray}
+                className="rounded-[14px] border border-slate-300 bg-white px-3 py-2.5 text-xs font-medium text-slate-900"
+              >
+                Tray Preset
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void executeTool({
+                    callId: nanoid(8),
+                    tool: "prepare_for_bambu_p1s",
+                  })
+                }
+                className="rounded-[14px] border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-xs font-medium text-emerald-900"
+              >
+                Prep For P1S
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleQuickExport()}
+                className="rounded-[14px] border border-sky-300 bg-sky-50 px-3 py-2.5 text-xs font-medium text-sky-900"
+              >
+                Export STL
+              </button>
+            </div>
+
+            <div className="mt-3 grid gap-2">
+              <div className="rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">Print Fit</p>
+                <p className={`mt-1 text-sm font-semibold ${printAnalysis.fitsP1S ? "text-emerald-700" : "text-amber-700"}`}>
+                  {printAnalysis.fitsP1S ? "Ready for P1S" : "Review build volume"}
                 </p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void executeTool({
-                      callId: nanoid(8),
-                      tool: "remove_shape",
-                      arguments: { id: selectedShape.id },
-                    })
-                  }
-                  className="text-[11px] font-medium text-rose-700"
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  {printAnalysis.warnings[0] ?? "Current model fits the Bambu Lab P1S envelope."}
+                </p>
+              </div>
+              {exportArtifact ? (
+                <a
+                  href={exportArtifact.downloadUrl}
+                  download={exportArtifact.filename}
+                  className="inline-flex items-center justify-center rounded-[14px] bg-slate-950 px-3 py-2.5 text-xs font-medium text-white"
                 >
-                  Remove
-                </button>
-              </div>
-              <input
-                value={selectedShape.label}
-                onChange={(event) => updateSelectedShape({ label: event.target.value })}
-                className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
-              />
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <select
-                  value={selectedShape.mode}
-                  onChange={(event) =>
-                    updateSelectedShape({
-                      mode: event.target.value as ShapeDefinition["mode"],
-                    })
-                  }
-                  className="rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
-                >
-                  <option value="add">Additive</option>
-                  <option value="subtract">Subtractive</option>
-                </select>
-                <input
-                  type="color"
-                  value={selectedShape.color}
-                  onChange={(event) => updateSelectedShape({ color: event.target.value })}
-                  className="h-10 w-full rounded-[14px] border border-slate-200 bg-slate-50 p-1"
-                />
-              </div>
+                  Download {exportArtifact.filename}
+                </a>
+              ) : null}
+            </div>
+          </div>
 
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                {[0, 1, 2].map((index) => (
-                  <div key={`position-${index}`}>
-                    {numberInput(["Pos X", "Pos Y", "Pos Z"][index], selectedShape.position[index], (value) => {
-                      const next = [...selectedShape.position] as Vec3;
-                      next[index] = value;
-                      updateSelectedShape({ position: next });
-                    })}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                {[0, 1, 2].map((index) => (
-                  <div key={`rotation-${index}`}>
-                    {numberInput(["Rot X", "Rot Y", "Rot Z"][index], selectedShape.rotation[index], (value) => {
-                      const next = [...selectedShape.rotation] as Vec3;
-                      next[index] = value;
-                      updateSelectedShape({ rotation: next });
-                    })}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                {[0, 1, 2].map((index) => (
-                  <div key={`scale-${index}`}>
-                    {numberInput(["Scale X", "Scale Y", "Scale Z"][index], selectedShape.scale[index], (value) => {
-                      const next = [...selectedShape.scale] as Vec3;
-                      next[index] = value;
-                      updateSelectedShape({ scale: next });
-                    }, 0.1)}
-                  </div>
-                ))}
-              </div>
+          <details className="mt-4 rounded-[18px] border border-slate-200 bg-white/90 p-3" open={advancedOpen}>
+            <summary
+              onClick={(event) => {
+                event.preventDefault();
+                setAdvancedOpen((current) => !current);
+              }}
+              className="flex cursor-pointer list-none items-center justify-between text-left"
+            >
+              <span>
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                  Advanced Studio
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  Manual shape tools, STL import, and lower-level project controls.
+                </p>
+              </span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-600">
+                {advancedOpen ? "Hide" : "Show"}
+              </span>
+            </summary>
 
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                {selectedShape.primitive === "text" ? (
-                  <>
-                    <label className="block">
-                      <span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                        Text
-                      </span>
-                      <input
-                        value={selectedShape.params.text ?? ""}
-                        onChange={(event) =>
-                          updateSelectedShape({
-                            params: { text: event.target.value },
-                          })
-                        }
-                        className="w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
-                      />
-                    </label>
-                    <div>
-                      {numberInput("Text Size", selectedShape.params.textSize ?? 10, (value) =>
-                        updateSelectedShape({
-                          params: { textSize: value },
-                        }),
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      {numberInput(
-                        selectedShape.primitive === "sphere" || selectedShape.primitive === "cylinder"
-                          ? "Radius"
-                          : "Width",
-                        selectedShape.params.width ?? selectedShape.params.radius ?? 10,
-                        (value) =>
-                          updateSelectedShape({
-                            params:
-                              selectedShape.primitive === "sphere" || selectedShape.primitive === "cylinder"
-                                ? { radius: value }
-                                : { width: value },
-                          }),
-                      )}
-                    </div>
-                    <div>
-                      {numberInput(
-                        "Height",
-                        selectedShape.params.height ?? selectedShape.params.textDepth ?? 10,
-                        (value) =>
-                          updateSelectedShape({
-                            params: { height: value },
-                          }),
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
+            {advancedOpen ? (
+              <div className="mt-3 space-y-4">
+                <label className="block">
+                  <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                    Project Brief
+                  </span>
+                  <textarea
+                    value={project.brief}
+                    onChange={(event) =>
+                      applyProject({
+                        ...project,
+                        brief: event.target.value,
+                      })
+                    }
+                    className="min-h-20 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-5 outline-none"
+                  />
+                </label>
 
-              {selectedShape.primitive === "box" || selectedShape.primitive === "roundedBox" ? (
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <div>
-                    {numberInput("Depth", selectedShape.params.depth ?? 10, (value) =>
-                      updateSelectedShape({
-                        params: { depth: value },
-                      }),
-                    )}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                      Quick Shapes
+                    </p>
+                    <p className="text-[11px] text-slate-500">{project.shapes.length} shapes</p>
                   </div>
-                  {selectedShape.primitive === "roundedBox" ? (
-                    <div>
-                      {numberInput(
-                        "Bevel",
-                        selectedShape.params.bevelRadius ?? 2,
-                        (value) =>
-                          updateSelectedShape({
-                            params: { bevelRadius: value },
-                          }),
-                        0.5,
-                      )}
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {(["box", "roundedBox", "cylinder", "sphere", "text"] as const).map((primitive) => (
+                      <button
+                        key={primitive}
+                        type="button"
+                        onClick={() => addPrimitive(primitive)}
+                        className="rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium capitalize text-slate-900"
+                      >
+                        Add {primitive}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                    Import STL
+                  </label>
+                  <input
+                    type="file"
+                    accept=".stl"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        void importStl(file);
+                      }
+                    }}
+                    className="w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs"
+                  />
+                  {project.importedModel ? (
+                    <div className="mt-2 rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700">
+                      {project.importedModel.name} · {project.importedModel.triangleCount.toLocaleString()} triangles
                     </div>
                   ) : null}
                 </div>
-              ) : null}
-            </div>
-          ) : null}
-        </section>
+              </div>
+            ) : null}
+          </details>
+        </aside>
 
         <section className="panel panel-strong rounded-[20px] p-3">
           <div className="flex h-full flex-col gap-3">
-            <div className="flex items-center justify-between rounded-[18px] border border-white/70 bg-white/65 px-4 py-3">
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                  Active Project
-                </p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-900">{project.name}</h2>
-              </div>
-              <div className="text-right">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                  Bridge
-                </p>
-                <p className="mt-1 text-xs font-medium text-slate-900">{displayedBridgeState}</p>
+            <div className="rounded-[18px] border border-white/70 bg-white/70 px-4 py-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                    Live Workspace
+                  </p>
+                  <h2 className="mt-1 text-2xl font-semibold text-slate-900">{project.name}</h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    {agentConnected
+                      ? "Your agent is connected. Keep the viewer centered and use the live stream below to follow its progress."
+                      : "Connect an agent from the rail, then the modeling session will stream here live."}
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    { label: "Agent", value: agentConnected ? agentName : "Waiting" },
+                    { label: "View", value: viewerMode === "final" ? "Final solid" : "Assembly" },
+                    { label: "Bridge", value: displayedBridgeState },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2.5">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                        {item.label}
+                      </p>
+                      <p className="mt-1 text-xs font-medium text-slate-900">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
             <div
               ref={viewerRef}
-              className="relative min-h-[560px] flex-1 overflow-hidden rounded-[22px] border border-slate-200 bg-slate-100 lg:min-h-[620px]"
+              className="relative min-h-[660px] flex-1 overflow-hidden rounded-[22px] border border-slate-200 bg-slate-100 xl:min-h-[760px]"
             >
               <div className="absolute left-3 top-3 z-10 rounded-full bg-slate-950/82 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-white">
-                {agentConnected ? "Agent view live" : "Viewer"} · {viewerMode}
+                {agentConnected ? "Agent live" : "Viewer"} · {viewerMode}
               </div>
               <div className="absolute right-3 top-3 z-10 flex rounded-full border border-slate-200 bg-white/90 p-1 shadow-lg">
                 <button
                   type="button"
                   onClick={() => startTransition(() => setViewerMode("final"))}
                   className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${
-                    viewerMode === "final"
-                      ? "bg-slate-950 text-white"
-                      : "text-slate-700"
+                    viewerMode === "final" ? "bg-slate-950 text-white" : "text-slate-700"
                   }`}
                 >
                   Final Solid
@@ -1113,9 +1015,7 @@ export function PrintStudioApp() {
                   type="button"
                   onClick={() => startTransition(() => setViewerMode("assembly"))}
                   className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${
-                    viewerMode === "assembly"
-                      ? "bg-slate-950 text-white"
-                      : "text-slate-700"
+                    viewerMode === "assembly" ? "bg-slate-950 text-white" : "text-slate-700"
                   }`}
                 >
                   Assembly
@@ -1135,189 +1035,194 @@ export function PrintStudioApp() {
               />
             </div>
 
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
               <div className="rounded-[18px] border border-slate-200 bg-white p-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                  Bambu P1S
-                </p>
-                <p className="mt-2 text-xl font-semibold text-slate-900">
-                  {project.printerProfile.buildVolume.join(" x ")} mm
-                </p>
-                <p className="mt-1 text-xs text-slate-600">
-                  0.4 mm nozzle · {project.printerProfile.recommendedLayerHeightMm} mm layers
-                </p>
-              </div>
-              <div className="rounded-[18px] border border-slate-200 bg-white p-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                  Print Fit
-                </p>
-                <p className={`mt-2 text-xl font-semibold ${printAnalysis.fitsP1S ? "text-emerald-700" : "text-amber-700"}`}>
-                  {printAnalysis.fitsP1S ? "Ready" : "Needs work"}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-slate-600">
-                  {printAnalysis.warnings[0] ?? "Current model fits the P1S envelope."}
-                </p>
-              </div>
-              <div className="rounded-[18px] border border-slate-200 bg-white p-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                  Latest STL
-                </p>
-                {exportArtifact ? (
-                  <>
-                    <p className="mt-2 text-sm font-semibold text-slate-900">{exportArtifact.filename}</p>
-                    <a
-                      href={exportArtifact.downloadUrl}
-                      download={exportArtifact.filename}
-                      className="mt-2 inline-flex rounded-full bg-slate-950 px-3 py-2 text-xs font-medium text-white"
-                    >
-                      Download {formatBytes(exportArtifact.sizeBytes)}
-                    </a>
-                  </>
-                ) : (
-                  <p className="mt-2 text-xs leading-5 text-slate-600">
-                    Export an STL to make a browser download link available.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-[18px] border border-slate-200 bg-white p-3">
-              <div className="flex items-center justify-between">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                  Verification Captures
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void executeTool({
-                        callId: nanoid(8),
-                        tool: "capture_scene_screenshot",
-                      })
-                    }
-                    className="rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-medium text-slate-900"
-                  >
-                    Capture Scene
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void executeTool({
-                        callId: nanoid(8),
-                        tool: "capture_workspace_screenshot",
-                      })
-                    }
-                    className="rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-medium text-slate-900"
-                  >
-                    Capture Workspace
-                  </button>
-                </div>
-              </div>
-              <div className="mt-3 grid gap-3 md:grid-cols-3">
-                {screenshots.length > 0 ? (
-                  screenshots.map((shot) => (
-                    <figure
-                      key={shot.id}
-                      className="overflow-hidden rounded-[16px] border border-slate-200 bg-slate-50"
-                    >
-                      <Image
-                        src={shot.dataUrl}
-                        alt={shot.label}
-                        width={640}
-                        height={360}
-                        unoptimized
-                        className="h-28 w-full object-cover"
-                      />
-                      <figcaption className="px-3 py-2 text-[11px] text-slate-600">
-                        {shot.label} · {shot.createdAt}
-                      </figcaption>
-                    </figure>
-                  ))
-                ) : (
-                  <p className="text-xs leading-5 text-slate-600">
-                    No screenshots yet. Agents should use these tools aggressively while iterating.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="panel panel-strong rounded-[20px] p-4 lg:col-span-2 lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto xl:col-span-1">
-          <div className="rounded-[18px] border border-slate-200 bg-white px-3 py-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-              Agent Tools
-            </p>
-            <div className="mt-3 space-y-2">
-              {AGENT_TOOL_MANIFEST.map((tool) => (
-                <div key={tool.name} className="rounded-[16px] border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-slate-900">{tool.name}</p>
-                    <span className="rounded-full bg-white px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">
-                      {tool.category}
-                    </span>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                      Live Console
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      Watch the session update as the agent calls tools and verifies progress.
+                    </p>
                   </div>
-                  <p className="mt-1.5 text-xs leading-5 text-slate-600">{tool.description}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="mt-4 rounded-[18px] border border-slate-200 bg-white px-3 py-3">
-            <div className="flex items-center justify-between">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                Live Tool Calls
-              </p>
-              <p className="text-[11px] text-slate-500">{toolCalls.length} tracked</p>
-            </div>
-            <div className="mt-3 space-y-2">
-              {toolCalls.length > 0 ? (
-                toolCalls.map((call) => (
-                  <div key={call.id} className="rounded-[16px] border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-slate-900">{call.tool}</p>
-                      <span
-                        className={`rounded-full px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em] ${
-                          call.status === "success"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : call.status === "error"
-                              ? "bg-rose-100 text-rose-800"
-                              : "bg-slate-900 text-white"
+                  <div className="flex rounded-full border border-slate-200 bg-slate-50 p-1">
+                    {[
+                      { id: "toolCalls", label: "Tools" },
+                      { id: "activity", label: "Activity" },
+                      { id: "verification", label: "Shots" },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setLiveTab(tab.id as typeof liveTab)}
+                        className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${
+                          liveTab === tab.id ? "bg-slate-950 text-white" : "text-slate-700"
                         }`}
                       >
-                        {call.status}
-                      </span>
-                    </div>
-                    <p className="mt-1.5 break-all font-mono text-[11px] text-slate-500">{call.summary}</p>
-                    {call.resultPreview ? (
-                      <p className="mt-1.5 text-[11px] leading-5 text-slate-600">{call.resultPreview}</p>
-                    ) : null}
+                        {tab.label}
+                      </button>
+                    ))}
                   </div>
-                ))
-              ) : (
-                <p className="text-xs leading-5 text-slate-600">
-                  When an agent connects, every tool call and result will stream here.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4 rounded-[18px] border border-slate-200 bg-white px-3 py-3">
-            <div className="flex items-center justify-between">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                Session Activity
-              </p>
-              <p className="text-[11px] text-slate-500">{activity.length} events</p>
-            </div>
-            <div className="mt-3 space-y-2">
-              {activity.map((entry) => (
-                <div key={entry.id} className="rounded-[16px] border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-slate-900">{entry.message}</p>
-                    <span className="font-mono text-[10px] text-slate-500">{entry.timestamp}</span>
-                  </div>
-                  {entry.detail ? <p className="mt-1.5 text-xs leading-5 text-slate-600">{entry.detail}</p> : null}
                 </div>
-              ))}
+
+                <div className="mt-3 max-h-[320px] space-y-2 overflow-y-auto pr-1">
+                  {liveTab === "toolCalls"
+                    ? toolCalls.length > 0
+                      ? toolCalls.map((call) => (
+                          <div key={call.id} className="rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-sm font-medium text-slate-900">{call.tool}</p>
+                              <span
+                                className={`rounded-full px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em] ${
+                                  call.status === "success"
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : call.status === "error"
+                                      ? "bg-rose-100 text-rose-800"
+                                      : "bg-slate-900 text-white"
+                                }`}
+                              >
+                                {call.status}
+                              </span>
+                            </div>
+                            <p className="mt-1.5 break-all font-mono text-[11px] text-slate-500">{call.summary}</p>
+                            {call.resultPreview ? (
+                              <p className="mt-1.5 text-[11px] leading-5 text-slate-600">{call.resultPreview}</p>
+                            ) : null}
+                          </div>
+                        ))
+                      : <p className="text-xs leading-5 text-slate-600">Tool calls will appear here once the agent starts working.</p>
+                    : null}
+
+                  {liveTab === "activity"
+                    ? activity.map((entry) => (
+                        <div key={entry.id} className="rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-medium text-slate-900">{entry.message}</p>
+                            <span className="font-mono text-[10px] text-slate-500">{entry.timestamp}</span>
+                          </div>
+                          {entry.detail ? <p className="mt-1.5 text-xs leading-5 text-slate-600">{entry.detail}</p> : null}
+                        </div>
+                      ))
+                    : null}
+
+                  {liveTab === "verification"
+                    ? screenshots.length > 0
+                      ? screenshots.map((shot) => (
+                          <figure key={shot.id} className="overflow-hidden rounded-[16px] border border-slate-200 bg-slate-50">
+                            <Image
+                              src={shot.dataUrl}
+                              alt={shot.label}
+                              width={640}
+                              height={360}
+                              unoptimized
+                              className="h-32 w-full object-cover"
+                            />
+                            <figcaption className="px-3 py-2 text-[11px] text-slate-600">
+                              {shot.label} · {shot.createdAt}
+                            </figcaption>
+                          </figure>
+                        ))
+                      : <p className="text-xs leading-5 text-slate-600">Verification screenshots will appear here after capture tools run.</p>
+                    : null}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-[18px] border border-slate-200 bg-white p-3">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                    Print Summary
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                    <div className="rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">Bambu P1S</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {project.printerProfile.buildVolume.join(" x ")} mm
+                      </p>
+                    </div>
+                    <div className="rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">Print Fit</p>
+                      <p className={`mt-1 text-sm font-semibold ${printAnalysis.fitsP1S ? "text-emerald-700" : "text-amber-700"}`}>
+                        {printAnalysis.fitsP1S ? "Ready" : "Review"}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-slate-600">
+                        {printAnalysis.warnings[0] ?? "Current model fits the P1S envelope."}
+                      </p>
+                    </div>
+                    <div className="rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">Latest STL</p>
+                      {exportArtifact ? (
+                        <>
+                          <p className="mt-1 text-sm font-semibold text-slate-900">{exportArtifact.filename}</p>
+                          <a
+                            href={exportArtifact.downloadUrl}
+                            download={exportArtifact.filename}
+                            className="mt-2 inline-flex rounded-full bg-slate-950 px-3 py-2 text-xs font-medium text-white"
+                          >
+                            Download {formatBytes(exportArtifact.sizeBytes)}
+                          </a>
+                        </>
+                      ) : (
+                        <p className="mt-1 text-xs leading-5 text-slate-600">
+                          Export an STL after the agent finishes shaping the model.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[18px] border border-slate-200 bg-white p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                      Verification
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void executeTool({
+                            callId: nanoid(8),
+                            tool: "capture_scene_screenshot",
+                          })
+                        }
+                        className="rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-medium text-slate-900"
+                      >
+                        Capture Scene
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void executeTool({
+                            callId: nanoid(8),
+                            tool: "capture_workspace_screenshot",
+                          })
+                        }
+                        className="rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-medium text-slate-900"
+                      >
+                        Capture Workspace
+                      </button>
+                    </div>
+                  </div>
+                  <details className="mt-3 rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <summary className="cursor-pointer text-xs font-medium text-slate-900">
+                      View Agent Tool Catalog
+                    </summary>
+                    <div className="mt-3 space-y-2">
+                      {AGENT_TOOL_MANIFEST.map((tool) => (
+                        <div key={tool.name} className="rounded-[12px] border border-slate-200 bg-white p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-medium text-slate-900">{tool.name}</p>
+                            <span className="rounded-full bg-slate-50 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">
+                              {tool.category}
+                            </span>
+                          </div>
+                          <p className="mt-1.5 text-xs leading-5 text-slate-600">{tool.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                </div>
+              </div>
             </div>
           </div>
         </section>
