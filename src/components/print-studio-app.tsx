@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { nanoid } from "nanoid/non-secure";
@@ -161,6 +161,7 @@ export function PrintStudioApp() {
   const [agentName, setAgentName] = useState("No agent");
   const [sessionId] = useState(() => nanoid(8).toUpperCase());
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>("tray-shell");
+  const [viewerMode, setViewerMode] = useState<"final" | "assembly">("final");
   const [exportArtifact, setExportArtifact] = useState<ExportArtifact>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -1036,7 +1037,31 @@ export function PrintStudioApp() {
               className="relative min-h-[460px] flex-1 overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100"
             >
               <div className="absolute left-4 top-4 z-10 rounded-full bg-slate-950/82 px-4 py-2 font-mono text-xs uppercase tracking-[0.2em] text-white">
-                {agentConnected ? "Agent view live" : "Viewer"}
+                {agentConnected ? "Agent view live" : "Viewer"} · {viewerMode}
+              </div>
+              <div className="absolute right-4 top-4 z-10 flex rounded-full border border-slate-200 bg-white/90 p-1 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => startTransition(() => setViewerMode("final"))}
+                  className={`rounded-full px-3 py-2 text-xs font-medium ${
+                    viewerMode === "final"
+                      ? "bg-slate-950 text-white"
+                      : "text-slate-700"
+                  }`}
+                >
+                  Final Solid
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startTransition(() => setViewerMode("assembly"))}
+                  className={`rounded-full px-3 py-2 text-xs font-medium ${
+                    viewerMode === "assembly"
+                      ? "bg-slate-950 text-white"
+                      : "text-slate-700"
+                  }`}
+                >
+                  Assembly
+                </button>
               </div>
               <div className="absolute bottom-4 left-4 z-10 rounded-2xl bg-white/88 px-4 py-3 text-sm text-slate-700 shadow-lg">
                 {printAnalysis.dimensionsMm.join(" x ")} mm
@@ -1048,6 +1073,7 @@ export function PrintStudioApp() {
                 }}
                 selectedShapeId={selectedShapeId}
                 agentConnected={agentConnected}
+                viewMode={viewerMode}
               />
             </div>
 

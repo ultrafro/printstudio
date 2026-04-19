@@ -5,6 +5,7 @@ import { Canvas } from "@react-three/fiber";
 import { useMemo } from "react";
 import type { ImportedModel, ShapeDefinition } from "@/lib/studio-types";
 import {
+  buildFinalMesh,
   createImportedMesh,
   createMeshForShape,
 } from "@/lib/studio-model";
@@ -13,6 +14,7 @@ export function StudioCanvas({
   project,
   selectedShapeId,
   agentConnected,
+  viewMode,
 }: {
   project: {
     shapes: ShapeDefinition[];
@@ -20,7 +22,12 @@ export function StudioCanvas({
   };
   selectedShapeId: string | null;
   agentConnected: boolean;
+  viewMode: "final" | "assembly";
 }) {
+  const finalMesh = useMemo(
+    () => (viewMode === "final" ? buildFinalMesh(project) : null),
+    [project, viewMode],
+  );
   const ghostMeshes = useMemo(
     () => project.shapes.map((shape) => createMeshForShape(shape)),
     [project.shapes],
@@ -45,19 +52,42 @@ export function StudioCanvas({
         <boxGeometry args={[256, 3, 256]} />
         <meshStandardMaterial color="#f8fafc" />
       </mesh>
-      {ghostMeshes.map((mesh) => (
-        <primitive key={mesh.uuid} object={mesh}>
+      {viewMode === "final" && finalMesh ? (
+        <primitive object={finalMesh} castShadow receiveShadow>
           <meshStandardMaterial
             attach="material"
-            color={mesh.name === selectedShapeId ? "#2563eb" : "#94a3b8"}
-            transparent
-            opacity={mesh.name === selectedShapeId ? 0.34 : 0.16}
+            color={agentConnected ? "#059669" : "#155e75"}
+            metalness={0.08}
+            roughness={0.36}
           />
         </primitive>
-      ))}
-      {importedMesh ? (
+      ) : null}
+      {viewMode === "assembly"
+        ? ghostMeshes.map((mesh) => (
+            <primitive key={mesh.uuid} object={mesh}>
+              <meshStandardMaterial
+                attach="material"
+                color={mesh.name === selectedShapeId ? "#2563eb" : "#94a3b8"}
+                transparent
+                opacity={mesh.name === selectedShapeId ? 0.4 : 0.16}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+              />
+            </primitive>
+          ))
+        : null}
+      {viewMode === "assembly" && importedMesh ? (
         <primitive object={importedMesh}>
-          <meshStandardMaterial attach="material" color="#64748b" transparent opacity={0.24} />
+          <meshStandardMaterial
+            attach="material"
+            color="#64748b"
+            transparent
+            opacity={0.24}
+            polygonOffset
+            polygonOffsetFactor={1}
+            polygonOffsetUnits={1}
+          />
         </primitive>
       ) : null}
       <OrbitControls makeDefault minDistance={90} maxDistance={480} />

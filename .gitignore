@@ -32,6 +32,9 @@ yarn-error.log*
 bridge.log
 dev.log
 playwright-printstudio.png
+bridge-test.log
+viewer-fix-dev.log
+artifacts/
 
 # env files (can opt-in for committing if needed)
 .env*
