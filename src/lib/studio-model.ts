@@ -182,6 +182,18 @@ export function createStarterProject(): StudioProject {
   });
 }
 
+export function createBlankProject(): StudioProject {
+  return {
+    name: "Untitled Project",
+    brief:
+      "Start from a blank workspace, add shapes, then verify with screenshots before export.",
+    printerProfile: BAMBU_P1S_PROFILE,
+    shapes: [],
+    selectedShapeId: null,
+    importedModel: null,
+  };
+}
+
 function createBufferGeometry(shape: ShapeDefinition): THREE.BufferGeometry {
   switch (shape.primitive) {
     case "box":
