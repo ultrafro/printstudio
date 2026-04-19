@@ -48,7 +48,7 @@ const PROMPT_IDEAS = [
 
 function getDefaultBridgeUrl() {
   if (typeof window === "undefined") {
-    return process.env.NEXT_PUBLIC_PRINTSTUDIO_BRIDGE_URL ?? "";
+    return process.env.NEXT_PUBLIC_PRINTSTUDIO_BRIDGE_URL ?? "ws://127.0.0.1:8787";
   }
 
   const stored = window.localStorage.getItem("printstudio.bridgeUrl");
@@ -60,11 +60,7 @@ function getDefaultBridgeUrl() {
     return process.env.NEXT_PUBLIC_PRINTSTUDIO_BRIDGE_URL;
   }
 
-  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-    return "ws://localhost:8787";
-  }
-
-  return "";
+  return "ws://127.0.0.1:8787";
 }
 
 function timestamp() {
@@ -129,6 +125,7 @@ function isValidUrl(value: string) {
 }
 
 export function PrintStudioApp() {
+  const initialBridgeUrl = getDefaultBridgeUrl();
   const [project, setProject] = useState<StudioProject>(() => createStarterProject());
   const [activity, setActivity] = useState<ActivityEntry[]>([
     createActivity(
@@ -140,8 +137,10 @@ export function PrintStudioApp() {
   ]);
   const [toolCalls, setToolCalls] = useState<ToolCallRecord[]>([]);
   const [screenshots, setScreenshots] = useState<ScreenshotRecord[]>([]);
-  const [bridgeUrl, setBridgeUrl] = useState(() => getDefaultBridgeUrl());
-  const [bridgeState, setBridgeState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
+  const [bridgeUrl, setBridgeUrl] = useState(() => initialBridgeUrl);
+  const [bridgeState, setBridgeState] = useState<"idle" | "connecting" | "connected" | "error">(
+    initialBridgeUrl ? "connecting" : "idle",
+  );
   const [agentConnected, setAgentConnected] = useState(false);
   const [agentName, setAgentName] = useState("No agent");
   const [sessionId] = useState(() => nanoid(8).toUpperCase());
@@ -150,6 +149,7 @@ export function PrintStudioApp() {
   const [connectPanelOpen, setConnectPanelOpen] = useState(false);
   const [liveTab, setLiveTab] = useState<"toolCalls" | "activity" | "verification">("toolCalls");
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [socketRevision, setSocketRevision] = useState(0);
   const [exportArtifact, setExportArtifact] = useState<ExportArtifact>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -190,9 +190,7 @@ export function PrintStudioApp() {
     ? "idle"
     : !bridgeUrlValid
       ? "error"
-      : bridgeState === "idle"
-        ? "connecting"
-        : bridgeState;
+      : bridgeState;
 
   const logActivity = useCallback(
     (
@@ -511,7 +509,7 @@ export function PrintStudioApp() {
 
     socket.addEventListener("open", () => {
       setBridgeState("connected");
-      logActivity("system", "Bridge connected", url.toString(), "success");
+      logActivity("system", "Agent server connected", url.toString(), "success");
       sendSocketMessage("studio.hello", {
         sessionId,
         tools: AGENT_TOOL_MANIFEST,
@@ -527,6 +525,7 @@ export function PrintStudioApp() {
 
       switch (data.type) {
         case "bridge.ready":
+        case "server.ready":
           return;
         case "agent.hello":
           setAgentConnected(true);
@@ -575,21 +574,23 @@ export function PrintStudioApp() {
       setBridgeState("idle");
       setAgentConnected(false);
       setAgentName("No agent");
-      logActivity("system", "Bridge disconnected", bridgeUrl, "warning");
+      logActivity("system", "Agent server disconnected", bridgeUrl, "warning");
     });
 
     socket.addEventListener("error", () => {
       setBridgeState("error");
-      logActivity("system", "Bridge connection error", bridgeUrl, "error");
+      logActivity("system", "Agent server connection error", bridgeUrl, "error");
     });
 
     return () => {
       socket.close();
     };
-  }, [bridgeUrl, bridgeUrlValid, executeTool, logActivity, sendSocketMessage, sessionId]);
+  }, [bridgeUrl, bridgeUrlValid, executeTool, logActivity, sendSocketMessage, sessionId, socketRevision]);
 
   const copyInstructions = useCallback(async () => {
     setConnectPanelOpen(true);
+    setBridgeState("connecting");
+    setSocketRevision((current) => current + 1);
 
     try {
       await navigator.clipboard.writeText(connectInstructions);
@@ -762,13 +763,16 @@ export function PrintStudioApp() {
 
             <label className="mt-3 block">
               <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                Bridge URL
+                Agent Server URL
               </span>
               <input
                 value={bridgeUrl}
-                onChange={(event) => setBridgeUrl(event.target.value)}
+                onChange={(event) => {
+                  setBridgeState("connecting");
+                  setBridgeUrl(event.target.value);
+                }}
                 className="w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs outline-none"
-                placeholder="ws://localhost:8787"
+                placeholder="ws://127.0.0.1:8787"
               />
             </label>
 
@@ -803,7 +807,7 @@ export function PrintStudioApp() {
             {connectPanelOpen ? (
               <div className="mt-3 rounded-[14px] border border-slate-200 bg-slate-50 p-2.5">
                 <p className="text-xs leading-5 text-slate-600">
-                  Copy this block into Claude Code or another agent client.
+                  Copy this block into Claude Code or another agent client. It tells the agent to start a local websocket server for this page.
                 </p>
                 <textarea
                   readOnly
@@ -981,7 +985,7 @@ export function PrintStudioApp() {
                   {[
                     { label: "Agent", value: agentConnected ? agentName : "Waiting" },
                     { label: "View", value: viewerMode === "final" ? "Final solid" : "Assembly" },
-                    { label: "Bridge", value: displayedBridgeState },
+                    { label: "Socket", value: displayedBridgeState },
                   ].map((item) => (
                     <div key={item.label} className="rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2.5">
                       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">

@@ -230,24 +230,33 @@ export function buildConnectInstructions({
   origin: string;
 }) {
   const manifestUrl = `${origin}/api/agent-manifest`;
-  const connectUrl = `${bridgeUrl}?role=agent&session=${sessionId}&name=Claude-Code`;
+  const connectUrl = `${bridgeUrl}?role=studio&session=${sessionId}&name=PrintStudio`;
 
   return `Connect to PrintStudio session ${sessionId}
 
-1. Fetch the tool manifest from ${manifestUrl}
-2. Open a websocket to:
-${connectUrl}
-3. Send:
-{"type":"agent.hello","payload":{"client":"Claude Code","sessionId":"${sessionId}"}}
-4. Wait for a studio hello + tool manifest.
-5. Invoke tools with JSON messages shaped like:
-{"type":"agent.tool_call","payload":{"callId":"call-1","tool":"create_ice_cube_tray","arguments":{"theme":"pokemon ice tray","rows":2,"columns":3,"label":"POKE ICE"}}}
-6. Listen for:
-{"type":"studio.tool_result","payload":{"callId":"call-1","ok":true,"result":{...}}}
-7. Use capture_scene_screenshot and capture_workspace_screenshot often to verify progress.
+You are the agent for this PrintStudio session.
 
-Optional helper script:
-curl -fsSL ${origin}/agent/connect.mjs -o connect-printstudio.mjs
+1. Start a local websocket server on your machine at:
+${bridgeUrl}
+2. Wait for the PrintStudio browser app to connect to:
+${connectUrl}
+3. Fetch the tool manifest from:
+${manifestUrl}
+4. When the browser connects, expect an initial studio message shaped like:
+{"type":"studio.hello","payload":{"sessionId":"${sessionId}","tools":[...],"studio":"PrintStudio"}}
+5. Reply with:
+{"type":"agent.hello","payload":{"client":"Claude Code","name":"Claude Code","sessionId":"${sessionId}"}}
+6. Invoke tools by sending JSON websocket messages shaped like:
+{"type":"agent.tool_call","payload":{"callId":"call-1","tool":"create_ice_cube_tray","arguments":{"theme":"pokemon ice tray","rows":2,"columns":3,"label":"POKE ICE"}}}
+7. Listen for tool results shaped like:
+{"type":"studio.tool_result","payload":{"callId":"call-1","ok":true,"result":{...}}}
+8. Use capture_scene_screenshot and capture_workspace_screenshot often to verify progress.
+
+Recommended quick start:
+curl -fsSL ${origin}/agent/connect.mjs -o host-printstudio.mjs
 npm i ws
-node connect-printstudio.mjs --url "${bridgeUrl}" --session "${sessionId}"`;
+node host-printstudio.mjs --port 8787 --session "${sessionId}" --name "Claude Code"
+
+That helper starts a local websocket server and a small CLI.
+After it is running, PrintStudio should connect to it automatically or after you click the connect button again.`;
 }
